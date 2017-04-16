@@ -1,11 +1,7 @@
 package V3;
 
-
-
-import java.util.InputMismatchException;
 import java.util.Random;
 import java.util.Scanner;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
