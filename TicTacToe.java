@@ -1,131 +1,164 @@
-package V3;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Stack;
 
 /**
- * Created by Simon on 12.04.2017.
+ * Created by Simon on 19.04.2017.
  */
 public class TicTacToe {
-    int map = 0b00_00_00_00_00_00_00_00_00; //8_7_6_5_4_3_2_1_0 //8x00
-    // <<step per field access mask+=3 -> first two bits 10 = 0 ; 01 = x ; 00->"="
-    final byte STEP = 2; // 0b00000011;
-    final int FIELDELEMENTS = 9; //0-8 = 9 elements
-    final int SIZE = 3;
-    int moves = 0; //there can't be a winner before the 5th move
-    //marking methods are not able to handle overwriting of existing chars
-    void markCross(int idx) {
-        int mask = 1;
-        for (int i = 0; i < idx; i++) {
-            mask <<= STEP;
-        }
-        map = map | mask;
-        moves++;
+    //Board:
+    //012
+    //345
+    //678
+
+    //246_048_258_147_036_876_543_321; boards[0] = 'x' boards[1] = 'o'
+    int[] boards;
+    int bitfilter = 0b001_001_001_001_001_001_001_001;
+    int bitfilterForBoard = 0b111_111_111;
+    int moveCounter = 0;
+    int node = 0;
+    int leaf = 0;
+    Stack<Integer> history = new Stack<>();
+    Collection<Integer> set = new HashSet<>();
+
+    int[] bitpattern = {
+            0b000_001_000_000_001_000_000_001,
+            0b000_000_000_001_000_000_000_010,
+            0b001_000_001_000_000_000_000_100,
+            0b000_000_000_000_010_000_001_000,
+            0b010_010_000_010_000_000_010_000,
+            0b000_000_010_000_000_000_100_000,
+            0b100_000_000_000_100_001_000_000,
+            0b000_000_000_100_000_010_000_000,
+            0b000_100_100_000_000_100_000_000
+    };
+
+    public TicTacToe(){
+        boards = new int[2];
+        boards[0] = 0b000_000_000_000_000_000_000_000;
+        boards[1] = 0b000_000_000_000_000_000_000_000;
+
     }
 
-    void markCircle(int idx) {
-        int mask = 2;
-        for (int i = 0; i < idx; i++) {
-            mask <<= STEP;
-        }
-        map = map | mask;
-        moves++;
+
+    public boolean isWin() {
+        if (moveCounter < 5) return false;
+        int currentBoard = boards[moveCounter-1 & 1];
+        return ((currentBoard & (currentBoard >> 1) & (currentBoard >> 2)) & bitfilter) > 0;
     }
 
-    void printMap() {
-        int temp = map;
-        char[] field = new char[9];
-        for (int mask = 0b11, i = 0; i < field.length; mask <<= STEP, i++) {
-            temp = map;
-            temp = temp & mask;
-            int k = binlog(temp);
-            //Falls binlog -1 -> leeres Feld, weil temp = leer. falls binlog%2 (also gerade binärstelle bzw ungerader integer) -> 'x' in allen anderen fällen (ungerade binärstelle bzw gerade zahl)--> 'O'
-            if (k == -1) {
-                field[i] = '=';
+    public void makeMove(int move) {
+        history.push(boards[moveCounter&1]);
+        boards[moveCounter&1] |= bitpattern[move];
+        moveCounter++;
+    }
+    public void makeMove(int...move){
+        for(int i : move){
+            makeMove(move);
+        }
+    }
+
+    public ArrayList<Integer> moves(){
+        ArrayList<Integer> lst = new ArrayList<>();
+        int res = ~((boards[0]&bitfilterForBoard) | (boards[1] & bitfilterForBoard));
+        for (int i = 0; i<=8 ; i++) {
+            if (((res >> i) & 1) ==1) {
+                lst.add(i);
             }
+        }
+        return lst;
+    }
+    public void checkSymmetrie(){
+            //nothing here yet
+    }
+    public void undoMove(){
+        moveCounter--;
+        boards[moveCounter&1] = history.pop();
+    }
+    public int getCurrentPlayer(){
+        // x starts
+        //-1 = 'x' ; 1 = 'o';
+        int res =  moveCounter&1;
+        if (res==0) res = -1;
+        return res;
+    }
+    public int boardToHash(){
+        //bitfilterForBoard: Damit sind die ersten 8 Bit der Boardrepresäntation gemeint, also von 0 (oben links) bis 8 (unten rechts)
+        int board0ToHash = (boards[0]&bitfilterForBoard)<<9;
+        int board1ToHash = (boards[1]&bitfilterForBoard);
+        return (board0ToHash|board1ToHash);
+    }
+    public void generateMoves(){
+
+        for (int i : moves()){
+            makeMove(i);
+            if (!(set.add(boardToHash()))){
+                undoMove();
+                continue;
+            }
+            if (isWin() || moveCounter==9){
+                leaf++;
+                undoMove();
+                continue;
+
+            }
+            node++;
+            generateMoves();
+            undoMove();
+        }
+    }
+
+    //not finished yet
+    public int minimax(int node){
+        int bestValue;
+        makeMove(node);
+        if (isWin()){
+            undoMove();
+            return 1*getCurrentPlayer();
+        }
+        if (getCurrentPlayer()==1){
+            bestValue = Integer.MIN_VALUE;
+            for (int i : moves()){
+                int v = minimax(i);
+                bestValue = Math.max(bestValue,v);
+            }
+        }
+        else { /*minimizing player*/
+            bestValue = Integer.MIN_VALUE;
+            for (int i : moves()){
+                int v = minimax(i);
+                bestValue = Math.min(bestValue,v);
+            }
+        }
+        undoMove();
+        return bestValue;
+    }
+    //expecting 9 bits example:  0b000_000_000
+    //not finished yet
+    public int flip(int board){
+        return 0;
+    }
+
+    @Override
+    public String toString(){
+        char[] board = new char[9];
+        int boardX = boards[0] & bitfilterForBoard;
+        int boardO = boards[1] & bitfilterForBoard;
+        for (int i = 0; i < 9; i++) {
+            if (((boards[0] >> i)&1) > 0) board[i] = 'x';
+            else if (((boards[1] >> i)&1) > 0) board[i] = 'o';
             else {
-                if (k % 2 == 0) {
-                    field[i] = 'x';
-                } else {
-                    field[i] = 'O';
-                }
+                board[i] = '=';
             }
         }
+        StringBuilder sb = new StringBuilder();
+        char[] field = board;
         for (int j = 0; j < field.length; j++) {
-            System.out.print(field[j] + " ");
-            if (j == 2 || j == 5) System.out.println();
+            sb.append(field[j] + " ");
+            if (j == 2 || j == 5) sb.append("\n");
         }
-        System.out.printf("%n");
-    }
-
-    public int binlog(int bits) {
-        int log = 0;
-        if (bits == 0) {
-            return -1;
-        }
-        if ((bits & 0xffff0000) != 0) {
-            bits >>>= 16;
-            log = 16;
-        } // Wenn der übergebene Parameter 16 0-Bit stellen(links->rechts) hat: Verschiebe diese 16 Bits ins Nirvana und hole die forderen nach, ausserdem setzte log = 16
-        if (bits >= 256) {
-            bits >>>= 8;
-            log += 8;
-        } //>>> bedeutet unsigned shift--> kann zu vorzeichen fehlern kommen bei einem overflow
-        if (bits >= 16) {
-            bits >>>= 4;
-            log += 4;
-        } //Es werden vorlaufend bitstellen abgeschnitten und dem log die abgeschnittenen stellen hinzuaddiert
-        if (bits >= 4) {
-            bits >>>= 2;
-            log += 2;
-        }
-        return log + (bits >>> 1); //
-    }
-    public void resetGame(){
-        map = 0b00_00_00_00_00_00_00_00_00;
-        moves = 0;
-    }
-    // -1 -> no winner yet ; 0 = 'O' won ; 1 = 'x' won
-    int isWinner() {
-        if (moves<5)return-1;
-        int[] start = {0, 3, 6, 0, 1, 2, 0, 2};
-        int[] increment = {1, 1, 1, 3, 3, 3, 4, 2};
-        int mask = 0b11;
-        int countX = 0;
-        int countO = 0;
-        for (int i = 0; i < FIELDELEMENTS -1; i++) {
-            for (int j = 0; j < SIZE; j++) {
-                mask = 0b11;
-                int k = start[i] + j * increment[i];
-                for (int o = 0; o < k; o++) {
-                    mask <<= STEP;
-                }
-
-                int temp = map & mask;
-                int binPos = binlog(temp);
-
-                if (binPos%2==1){
-                    countO++;
-                }
-                else if(binPos%2==0){
-                    countX++;
-                }
-            }
-            if (countX == 3) {
-                return 1;
-            }
-            else if(countO == 3){
-                return 0;
-            }
-            countO = 0;
-            countX = 0;
-        }
-        if (moves == 9 ){
-            draw();
-        }
-        return -1;
-    }
-
-    void draw(){
-        System.out.println("This is a draw! Refreshing the Battelground!");
-        resetGame();
-        printMap();
+        sb.append("\n");
+        return "\n"+sb.toString();
     }
 }
