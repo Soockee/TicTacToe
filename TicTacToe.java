@@ -1,7 +1,7 @@
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Stack;
+
+import java.util.*;
+import java.util.stream.IntStream;
+
 
 /**
  * Created by Simon on 19.04.2017.
@@ -34,120 +34,201 @@ public class TicTacToe {
             0b000_100_100_000_000_100_000_000
     };
 
-    public TicTacToe(){
+    public TicTacToe() {
         boards = new int[2];
         boards[0] = 0b000_000_000_000_000_000_000_000;
         boards[1] = 0b000_000_000_000_000_000_000_000;
-
     }
 
 
     public boolean isWin() {
         if (moveCounter < 5) return false;
-        int currentBoard = boards[moveCounter-1 & 1];
+        int currentBoard = boards[moveCounter - 1 & 1];
         return ((currentBoard & (currentBoard >> 1) & (currentBoard >> 2)) & bitfilter) > 0;
     }
 
     public void makeMove(int move) {
-        history.push(boards[moveCounter&1]);
-        boards[moveCounter&1] |= bitpattern[move];
+        int turn = moveCounter & 1;
+        history.push(boards[turn]);
+        boards[turn] |= bitpattern[move];
         moveCounter++;
     }
-    public void makeMove(int...move){
-        for(int i : move){
-            makeMove(move);
+
+    public void makeMove(int... move) {
+        for (int i : move) {
+            makeMove(i);
         }
     }
 
-    public ArrayList<Integer> moves(){
+    public ArrayList<Integer> moves() {
+
         ArrayList<Integer> lst = new ArrayList<>();
-        int res = ~((boards[0]&bitfilterForBoard) | (boards[1] & bitfilterForBoard));
-        for (int i = 0; i<=8 ; i++) {
-            if (((res >> i) & 1) ==1) {
+
+        int res = ~((boards[0] & bitfilterForBoard) | (boards[1] & bitfilterForBoard));
+
+        IntStream.range(0,9).forEach(i->{
+            if (((res>>i) & 1) == 1){
                 lst.add(i);
             }
-        }
+        });
         return lst;
     }
-    public void checkSymmetrie(){
-            //nothing here yet
-    }
-    public void undoMove(){
-        moveCounter--;
-        boards[moveCounter&1] = history.pop();
-    }
-    public int getCurrentPlayer(){
-        // x starts
-        //-1 = 'x' ; 1 = 'o';
-        int res =  moveCounter&1;
-        if (res==0) res = -1;
-        return res;
-    }
-    public int boardToHash(){
-        //bitfilterForBoard: Damit sind die ersten 8 Bit der Boardrepresäntation gemeint, also von 0 (oben links) bis 8 (unten rechts)
-        int board0ToHash = (boards[0]&bitfilterForBoard)<<9;
-        int board1ToHash = (boards[1]&bitfilterForBoard);
-        return (board0ToHash|board1ToHash);
-    }
-    public void generateMoves(){
 
-        for (int i : moves()){
+    public void undoMove() {
+        moveCounter--;
+        boards[moveCounter & 1] = history.pop();
+    }
+
+    public int boardToHash() {
+        //bitfilterForBoard: Damit sind die ersten 8 Bit der Boardrepresäntation gemeint, also von 0 (oben links) bis 8 (unten rechts)
+        int board0ToHash = (boards[1] & bitfilterForBoard) << 9;
+        int board1ToHash = (boards[0] & bitfilterForBoard);
+        return (board0ToHash | board1ToHash);
+    }
+
+    public int boardToHash(int b1, int b2) {
+        int board0ToHash = (b1 & bitfilterForBoard) << 9;
+        int board1ToHash = (b2 & bitfilterForBoard);
+        return (board0ToHash | board1ToHash);
+    }
+
+    public void generateMoves() {
+        for (int i : moves()) {
             makeMove(i);
-            if (!(set.add(boardToHash()))){
+            excludeRedundancy();
+            if (!(set.add(boardToHash()))) {
                 undoMove();
                 continue;
             }
-            if (isWin() || moveCounter==9){
+            if (isWin() || moveCounter == 9) {
                 leaf++;
                 undoMove();
                 continue;
-
             }
+
             node++;
             generateMoves();
             undoMove();
         }
     }
 
+    public int flipDiagonal(int board) {
+        int res = board & bitfilterForBoard;
+        res = (res << 8) & 100_000_000
+                | (res >> 8) & 0b1
+                | (res << 4) & 0b100_000
+                | (res >> 4) & 0b10
+                | (res << 4) & 0b10_000_000
+                | (res >> 4) & 0b1_000;
+        res = res | (board & 0b001_010_100);
+        return res;
+    }
+
+    public int flipAntiDiagonal(int board) {
+        int res = board & bitfilterForBoard;
+        res = (res << 4) & 0b1_000_000
+                | (res >> 4) & 0b100
+                | (res << 2) & 0b10_000_000
+                | (res >> 2) & 0b100_000
+                | (res << 2) & 0b1_000
+                | (res >> 2) & 0b10;
+        res = res | (board & 0b100_010_001);
+        return res;
+    }
+
+    public int flipHorizontal(int board) {
+        int res = board & bitfilterForBoard;
+        res = ((res << 6) & 0b111_000_000) | ((res >> 6) & 0b000_000_111);
+        res = res | (board & 0b000_111_000);
+        return res;
+    }
+
+    public int flipVertical(int board) {
+        int res = board & bitfilterForBoard;
+        res = ((res << 2) & 0b100_100_100) | ((res >> 2) & 0b001_001_001);
+        res = res | (board & 0b010_010_010);
+        return res;
+    }
+
+    public int rotate90DegreesClockwise(int board) {
+        return flipHorizontal(flipDiagonal(board));
+    }
+
+    public int rotate90DegreesAntiClockwise(int board) {
+        return flipHorizontal(flipAntiDiagonal(board));
+    }
+
+    public int rotate180Degrees(int board) {
+        return flipHorizontal(flipVertical(board));
+    }
+
+    public int rotate180DegreesMirror(int board) {
+        return rotate180Degrees(flipVertical(board));
+    }
+
+    public int rotate90DegreesClockWiseMirror(int board) {
+        return rotate90DegreesClockwise(flipVertical(board));
+    }
+
+    public int rotate90DegreesAntiClockWiseMirror(int board) {
+        return rotate90DegreesAntiClockwise(flipVertical(board));
+    }
+
+    public void excludeRedundancy() {
+        int b1 = boards[0];
+        int b2 = boards[1];
+
+        set.add(boardToHash(rotate90DegreesAntiClockwise(b1), rotate90DegreesAntiClockwise(b2)));
+        set.add(boardToHash(rotate90DegreesClockwise(b1), rotate90DegreesClockwise(b2)));
+        set.add(boardToHash(rotate180Degrees(b1), rotate180Degrees(b2)));
+
+        set.add(boardToHash(flipVertical(b1), flipVertical(b2)));
+        set.add(boardToHash(rotate90DegreesAntiClockWiseMirror(b1), rotate90DegreesClockWiseMirror(b2)));
+        set.add(boardToHash(rotate90DegreesClockWiseMirror(b1), rotate90DegreesClockWiseMirror(b2)));
+        set.add(boardToHash(rotate180DegreesMirror(b1), rotate180DegreesMirror(b2)));
+    }
+
     //not finished yet
-    public int minimax(int node){
+    public int getCurrentPlayer() {
+        // x starts
+        //-1 = 'x' ; 1 = 'o';
+        int res = moveCounter & 1;
+        if (res == 0) res = -1;
+        return res;
+    }
+
+    public int minimax(int node) {
         int bestValue;
         makeMove(node);
-        if (isWin()){
+        if (isWin()) {
             undoMove();
-            return 1*getCurrentPlayer();
+            return 1 * getCurrentPlayer();
         }
-        if (getCurrentPlayer()==1){
+        if (getCurrentPlayer() == 1) {
             bestValue = Integer.MIN_VALUE;
-            for (int i : moves()){
+            for (int i : moves()) {
                 int v = minimax(i);
-                bestValue = Math.max(bestValue,v);
+                bestValue = Math.max(bestValue, v);
             }
-        }
-        else { /*minimizing player*/
+        } else { /*minimizing player*/
             bestValue = Integer.MIN_VALUE;
-            for (int i : moves()){
+            for (int i : moves()) {
                 int v = minimax(i);
-                bestValue = Math.min(bestValue,v);
+                bestValue = Math.min(bestValue, v);
             }
         }
         undoMove();
         return bestValue;
     }
-    //expecting 9 bits example:  0b000_000_000
-    //not finished yet
-    public int flip(int board){
-        return 0;
-    }
 
     @Override
-    public String toString(){
+    public String toString() {
         char[] board = new char[9];
         int boardX = boards[0] & bitfilterForBoard;
         int boardO = boards[1] & bitfilterForBoard;
         for (int i = 0; i < 9; i++) {
-            if (((boards[0] >> i)&1) > 0) board[i] = 'x';
-            else if (((boards[1] >> i)&1) > 0) board[i] = 'o';
+            if (((boards[0] >> i) & 1) > 0) board[i] = 'x';
+            else if (((boards[1] >> i) & 1) > 0) board[i] = 'o';
             else {
                 board[i] = '=';
             }
@@ -159,6 +240,6 @@ public class TicTacToe {
             if (j == 2 || j == 5) sb.append("\n");
         }
         sb.append("\n");
-        return "\n"+sb.toString();
+        return "\n" + sb.toString();
     }
 }
